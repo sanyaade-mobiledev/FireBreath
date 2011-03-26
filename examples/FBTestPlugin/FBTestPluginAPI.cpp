@@ -48,6 +48,7 @@ FBTestPluginAPI::FBTestPluginAPI(boost::shared_ptr<FBTestPlugin> plugin, FB::Bro
     registerMethod("optionalTest", make_method(this, &FBTestPluginAPI::optionalTest));
     registerMethod("getURL", make_method(this, &FBTestPluginAPI::getURL));
     registerMethod("postURL", make_method(this, &FBTestPluginAPI::postURL));
+    registerMethod("setTimeout",  make_method(this, &FBTestPluginAPI::SetTimeout));
      
     registerMethod(L"скажи",  make_method(this, &FBTestPluginAPI::say));
     
@@ -342,6 +343,20 @@ void FBTestPluginAPI::getURLCallback(const FB::JSObjectPtr& callback, bool succe
     } else {
         callback->InvokeAsync("", FB::variant_list_of(false));
     }
+}
+
+void FBTestPluginAPI::SetTimeout(const FB::JSObjectPtr& callback, long timeout)
+{
+	bool recursive = false;
+	FB::TimerPtr timer = FB::Timer::getTimer(timeout, recursive, boost::bind(&FBTestPluginAPI::timerCallback, this, callback));
+	timer->start();
+	timers.push_back(timer);
+}
+
+void FBTestPluginAPI::timerCallback(const FB::JSObjectPtr& callback)
+{
+	callback->Invoke("", FB::variant_list_of());
+	// TODO: delete This timer
 }
 
 const boost::optional<std::string> FBTestPluginAPI::optionalTest( const std::string& test1, const boost::optional<std::string>& str )
