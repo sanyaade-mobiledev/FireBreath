@@ -27,6 +27,7 @@ include_directories(
     ${FB_CONFIG_DIR}
     ${FB_PLUGINCORE_SOURCE_DIR}
     ${Boost_INCLUDE_DIRS}
+    ${ATL_INCLUDE_DIRS}
     ${FB_CONFIG_DIR}
     )
 
@@ -53,6 +54,8 @@ file (GLOB TYPES RELATIVE ${CMAKE_CURRENT_SOURCE_DIR}
     SafeQueue*
     JSExceptions.h
     FBPointers.h
+    Shareable*
+    logging.h
 )
 
 file (GLOB JSAPI_OBJECTS RELATIVE ${CMAKE_CURRENT_SOURCE_DIR}
@@ -75,6 +78,7 @@ file (GLOB GENERAL RELATIVE ${CMAKE_CURRENT_SOURCE_DIR}
     Factory*
     Test*
     [^.]*.py
+    precompiled_headers.*
     )
 
 SOURCE_GROUP(JSAPI FILES ${JSAPI_OBJECTS})
@@ -90,6 +94,7 @@ set (SOURCES
     )
 
 add_library(${PROJECT_NAME} STATIC ${SOURCES})
+ADD_PRECOMPILED_HEADER("${PROJECT_NAME}" "${CMAKE_CURRENT_SOURCE_DIR}/precompiled_headers.h" "${CMAKE_CURRENT_SOURCE_DIR}/precompiled_headers.cpp" SOURCES)
 
 target_link_libraries(${PROJECT_NAME}
     ${Boost_LIBRARIES}
@@ -98,8 +103,12 @@ target_link_libraries(${PROJECT_NAME}
 
 set_target_properties(${PROJECT_NAME} PROPERTIES FOLDER "FireBreath Core")
 
-if (NOT WITH_SYSTEM_BOOST)
-	export(TARGETS ScriptingCore ${Boost_LIBRARIES} APPEND FILE ${FB_EXPORT_FILE})
-else()
-	export(TARGETS ScriptingCore APPEND FILE ${FB_EXPORT_FILE})
+export(TARGETS ScriptingCore APPEND FILE ${FB_EXPORT_FILE})
+if (FB_RELEASE)
+    install (TARGETS ScriptingCore
+        EXPORT FireBreath_Exports
+        DESTINATION bin/\${BUILD_TYPE}
+        COMPONENT FBCORE
+        )
 endif()
+

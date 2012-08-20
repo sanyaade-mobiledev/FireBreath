@@ -12,15 +12,19 @@ License:    Dual license model; choose one of two:
 Copyright 2009 Richard Bateman, Firebreath development team
 \**********************************************************/
 
+#ifdef FB_MACOSX
+#include <dlfcn.h>
+#endif
 #include <cstdio>
-#include "NpapiPluginModule.h"
 #include "NpapiPlugin.h"
 #include "FactoryBase.h"
 #include "NpapiBrowserHost.h"
 #include <boost/shared_ptr.hpp>
+#include "precompiled_headers.h" // On windows, everything above this line in PCH
 #include "AsyncFunctionCall.h"
-#include "SafeQueue.h"
 #include "PluginInfo.h"
+#include "SafeQueue.h"
+#include "NpapiPluginModule.h"
 
 #if FB_WIN
 #  include "Win/NpapiBrowserHostAsyncWin.h"
@@ -34,19 +38,17 @@ namespace
 {
     bool needAsyncCallsWorkaround(NPP npp, NPNetscapeFuncs* funcs)
     {
+        bool result(false);
         // work-around detection here
-#ifdef _WINDOWS_
-#if 0
+#if FB_WIN
         const char* const cstrUserAgent = funcs->uagent(npp);
-        if(!cstrUserAgent) 
-            return false;
-        
-        const std::string userAgent(cstrUserAgent);        
-        const bool result = userAgent.find("Opera") != std::string::npos;
-        return result;
+        if(cstrUserAgent) {
+            const std::string userAgent(cstrUserAgent);
+            // Safari 5.1 NPN_PluginThreadAsyncCall doesn't seem to work anymore; use the workaround
+            result = userAgent.find("Safari") != std::string::npos;
+        }
 #endif
-#endif
-        return (funcs->version < NPVERS_HAS_PLUGIN_THREAD_ASYNC_CALL);
+        return result || (funcs->version < NPVERS_HAS_PLUGIN_THREAD_ASYNC_CALL);
     }
 
     bool asyncCallsWorkaround(NPP npp, NPNetscapeFuncs* funcs = 0)
@@ -64,7 +66,7 @@ namespace
 
             if(asyncCallsWorkaround(npp, &npnFuncs)) {
                 npnFuncs.pluginthreadasynccall = NULL;
-    #ifdef _WINDOWS_
+    #if FB_WIN
                 NpapiBrowserHostPtr host(boost::make_shared<NpapiBrowserHostAsyncWin>(module, npp));
                 return host;
     #else
@@ -82,61 +84,61 @@ namespace
         }
     }
 
-    struct NpapiPDataHolder
+    class NpapiPDataHolder
     {
-        NpapiBrowserHostPtr host;
-        boost::shared_ptr<NpapiPlugin> plugin;
-        FB::SafeQueue< FB::AsyncFunctionCallPtr > asyncFunctionQueue;
+    private:
+        NpapiBrowserHostPtr m_host;
+        boost::shared_ptr<NpapiPlugin> m_plugin;
 
+    public:
         NpapiPDataHolder(NpapiBrowserHostPtr host, boost::shared_ptr<NpapiPlugin> plugin)
-          : host(host), plugin(plugin) {}
-        ~NpapiPDataHolder() {}
+          : m_host(host), m_plugin(plugin)
+        {
+#ifdef FB_MACOSX
+            FB::OneShotManager::getInstance().npp_register(m_host->getContextID());
+#endif
+        }
+        ~NpapiPDataHolder() {
+#ifdef FB_MACOSX
+            FB::OneShotManager::getInstance().npp_unregister(m_host->getContextID());
+#endif
+        }
+
+        NpapiBrowserHostPtr getHost() const {
+            return m_host;
+        }
+        NpapiPluginPtr getPlugin() const {
+            return m_plugin;
+        }
     };
-
-    
-
-    NpapiPDataHolder* getHolder(NPP instance)
-    {   
-        return static_cast<NpapiPDataHolder*>(instance->pdata);
-    }
-
-    NpapiBrowserHostPtr getHost(NPP instance)
-    {
-        return static_cast<NpapiPDataHolder*>(instance->pdata)->host;
-    }
 
     bool validInstance(NPP instance)
     {
         return instance != NULL && instance->pdata != NULL;
     }
-    
-    void asyncCallbackFunction(void* npp, uint32_t timerID)
+
+    NpapiPDataHolder* getHolder(NPP instance)
     {
-        boost::shared_ptr<FB::AsyncFunctionCall> evt;
-        NpapiPDataHolder *holder = getHolder(static_cast<NPP>(npp));
-        while (holder->asyncFunctionQueue.try_pop(evt)) {
-            evt->func(evt->userData);
-        }
-    }    
+        if (validInstance(instance))
+            return static_cast<NpapiPDataHolder*>(instance->pdata);
+        return NULL;
+    }
 }
 
 NpapiPluginPtr FB::Npapi::getPlugin(NPP instance)
 {
-    return static_cast<NpapiPDataHolder*>(instance->pdata)->plugin;
+    if (NpapiPDataHolder* holder = getHolder(instance))
+        return holder->getPlugin();
+    return NpapiPluginPtr();
 }
 
-
-// This is used on mac snow leopard safari
-void NpapiPluginModule::scheduleAsyncCallback(NPP npp, void (*func)(void *), void *userData)
-{
-    getHolder(npp)->asyncFunctionQueue.push(FB::AsyncFunctionCallPtr(new FB::AsyncFunctionCall(func, userData)));
-    //getHost(npp)->ScheduleTimer(0, false, &asyncCallbackFunction);
 #ifdef FB_MACOSX
-    OneShotManager::getInstance().push(npp, &asyncCallbackFunction);
-#endif
+// This is used on mac snow leopard safari
+void NpapiPluginModule::scheduleAsyncCallback(NPP instance, void (*func)(void *), void *userData)
+{
+    FB::OneShotManager::getInstance().npp_scheduleAsyncCallback(instance, func, userData);
 }
-
-NpapiPluginModule *NpapiPluginModule::Default = NULL;
+#endif
 
 // These are the static NPP_ functions; NPP_New and NPP_Destroy create and destroy the
 // plugin, the rest are wrappers that dereference NPP->pdata to get at the plugin object
@@ -144,15 +146,28 @@ NpapiPluginModule *NpapiPluginModule::Default = NULL;
 NPError NpapiPluginModule::NPP_New(NPMIMEType pluginType, NPP instance, uint16_t mode, int16_t argc,
                                    char* argn[], char* argv[], NPSavedData* saved)
 {
+    FBLOG_INFO("NPAPI", "NPP_New: " << (void*) instance);
     if (instance == NULL) {
         return NPERR_INVALID_INSTANCE_ERROR;
     }
 
-    try 
+    try
     {
-        NPNetscapeFuncs& npnFuncs = NpapiPluginModule::Default->NPNFuncs;
-        
-        NpapiBrowserHostPtr host(createBrowserHost(NpapiPluginModule::Default, instance));
+#ifdef FB_MACOSX
+        // Helps with certain weird embedding cases
+        Dl_info info;
+
+        dladdr(__builtin_return_address(0), &info);
+
+        NpapiPluginModule *module = NpapiPluginModule::GetModule(info.dli_fbase);
+#else
+        NpapiPluginModule *module = NpapiPluginModule::GetModule(0);
+#endif
+        //printf("%p NpapiPluginModule::%s()\n", module, __func__);
+        NPNetscapeFuncs& npnFuncs = module->NPNFuncs;
+
+        NpapiBrowserHostPtr host(createBrowserHost(module, instance));
+
         host->setBrowserFuncs(&(npnFuncs));
 
         // TODO: We should probably change this and pass the MIMEType into _getNpapiPlugin instead
@@ -167,18 +182,18 @@ NPError NpapiPluginModule::NPP_New(NPMIMEType pluginType, NPP instance, uint16_t
         instance->pdata = static_cast<void*>(holder);
 
         plugin->init(pluginType, argc, argn, argv);
-    } 
-    catch (const PluginCreateError &e) 
+    }
+    catch (const PluginCreateError &e)
     {
         printf("%s\n", e.what());
         return NPERR_INCOMPATIBLE_VERSION_ERROR;
     }
-    catch (const std::bad_alloc& e) 
+    catch (const std::bad_alloc& e)
     {
         printf("%s\n", e.what());
         return NPERR_OUT_OF_MEMORY_ERROR;
     }
-    catch (const std::exception& e) 
+    catch (const std::exception& e)
     {
         printf("%s\n", e.what());
         return NPERR_GENERIC_ERROR;
@@ -189,29 +204,38 @@ NPError NpapiPluginModule::NPP_New(NPMIMEType pluginType, NPP instance, uint16_t
 
 NPError NpapiPluginModule::NPP_Destroy(NPP instance, NPSavedData** save)
 {
-    if (NpapiBrowserHostPtr host = getHost(instance)) {
-        host->shutdown();
-    }
-#ifdef FB_MACOSX
-    OneShotManager::getInstance().clear(instance);
-#endif
+    FBLOG_INFO("NPAPI", "NPP_Destroy: " << (void*) instance);
     if (!validInstance(instance)) {
         return NPERR_INVALID_INSTANCE_ERROR;
     }
+    NpapiBrowserHostWeakPtr weakHost;
 
-    if (NpapiPluginPtr plugin = getPlugin(instance)) {
-        plugin->shutdown();
+    if (NpapiPDataHolder* holder = getHolder(instance)) {
+        NpapiBrowserHostPtr host(holder->getHost());
+        weakHost = host;
+        if (host)
+            host->shutdown();
+
+        if (NpapiPluginPtr plugin = holder->getPlugin())
+            plugin->shutdown();
+
+        instance->pdata = NULL;
+        delete holder; // Destroy plugin
+        // host should be destroyed when it goes out of scope here
+    } else {
+        return NPERR_GENERIC_ERROR;
     }
-
-    NpapiPDataHolder* tmp(getHolder(instance));
-    instance->pdata = NULL;
-    delete tmp;
+    // If this assertion fails, you probably have a circular reference
+    // to your BrowserHost object somewhere -- the host should be gone
+    // by this point. This assertion is warning you of a bug.
+    assert(weakHost.expired());
 
     return NPERR_NO_ERROR;
 }
 
 NPError NpapiPluginModule::NPP_SetWindow(NPP instance, NPWindow* window)
 {
+    FBLOG_TRACE("NPAPI", (void*) instance);
     if (!validInstance(instance)) {
         return NPERR_INVALID_INSTANCE_ERROR;
     }
@@ -227,19 +251,21 @@ NPError NpapiPluginModule::NPP_SetWindow(NPP instance, NPWindow* window)
 NPError NpapiPluginModule::NPP_NewStream(NPP instance, NPMIMEType type, NPStream* stream,
                                        NPBool seekable, uint16_t* stype)
 {
+    FBLOG_INFO("NPAPI", (void*) instance);
     if (!validInstance(instance)) {
         return NPERR_INVALID_INSTANCE_ERROR;
     }
 
     if (NpapiPluginPtr plugin = getPlugin(instance)) {
         return plugin->NewStream(type, stream, seekable, stype);
-    } else {    
+    } else {
         return NPERR_GENERIC_ERROR;
     }
 }
 
 NPError NpapiPluginModule::NPP_DestroyStream(NPP instance, NPStream* stream, NPReason reason)
 {
+    FBLOG_INFO("NPAPI", (void*) instance);
     if (!validInstance(instance)) {
         return NPERR_INVALID_INSTANCE_ERROR;
     }
@@ -253,13 +279,14 @@ NPError NpapiPluginModule::NPP_DestroyStream(NPP instance, NPStream* stream, NPR
 
 int32_t NpapiPluginModule::NPP_WriteReady(NPP instance, NPStream* stream)
 {
+    FBLOG_INFO("NPAPI",(void*) instance);
     if (!validInstance(instance)) {
         return NPERR_INVALID_INSTANCE_ERROR;
     }
 
     if (NpapiPluginPtr plugin = getPlugin(instance)) {
         return plugin->WriteReady(stream);
-    } else {    
+    } else {
         return NPERR_GENERIC_ERROR;
     }
 }
@@ -267,6 +294,7 @@ int32_t NpapiPluginModule::NPP_WriteReady(NPP instance, NPStream* stream)
 int32_t NpapiPluginModule::NPP_Write(NPP instance, NPStream* stream, int32_t offset, int32_t len,
                                  void* buffer)
 {
+    FBLOG_INFO("NPAPI", (void*) instance);
     if (!validInstance(instance)) {
         return NPERR_INVALID_INSTANCE_ERROR;
     }
@@ -280,6 +308,7 @@ int32_t NpapiPluginModule::NPP_Write(NPP instance, NPStream* stream, int32_t off
 
 void NpapiPluginModule::NPP_StreamAsFile(NPP instance, NPStream* stream, const char* fname)
 {
+    FBLOG_INFO("NPAPI", (void*) instance);
     if (!validInstance(instance)) {
         return;
     }
@@ -291,6 +320,7 @@ void NpapiPluginModule::NPP_StreamAsFile(NPP instance, NPStream* stream, const c
 
 void NpapiPluginModule::NPP_Print(NPP instance, NPPrint* platformPrint)
 {
+    FBLOG_INFO("NPAPI", (void*) instance);
     if (!validInstance(instance)) {
         return;
     }
@@ -302,6 +332,7 @@ void NpapiPluginModule::NPP_Print(NPP instance, NPPrint* platformPrint)
 
 int16_t NpapiPluginModule::NPP_HandleEvent(NPP instance, void* event)
 {
+    FBLOG_TRACE("NPAPI", (void*) instance);
     if (!validInstance(instance)) {
         return 0;
     }
@@ -316,6 +347,7 @@ int16_t NpapiPluginModule::NPP_HandleEvent(NPP instance, void* event)
 void NpapiPluginModule::NPP_URLNotify(NPP instance, const char* url, NPReason reason,
                                     void* notifyData)
 {
+    FBLOG_INFO("NPAPI", (void*) instance);
     if (!validInstance(instance)) {
         return;
     }
@@ -327,9 +359,23 @@ void NpapiPluginModule::NPP_URLNotify(NPP instance, const char* url, NPReason re
 
 NPError NpapiPluginModule::NPP_GetValue(NPP instance, NPPVariable variable, void *value)
 {
+    FBLOG_TRACE("NPAPI", (void*) instance);
     // These values may depend on the mimetype of the plugin
     if (!validInstance(instance)) {
-        return NPERR_INVALID_INSTANCE_ERROR;
+        switch (variable) {
+        case NPPVpluginNameString: {
+            static const std::string pluginName = getFactoryInstance()->getPluginName("");
+            *((const char **)value) = pluginName.c_str();
+            break; }
+        case NPPVpluginDescriptionString: {
+            // If nothing is instantiated, use the first description found
+            static const std::string pluginDesc = getFactoryInstance()->getPluginDescription("");
+            *((const char **)value) = pluginDesc.c_str();
+            break; }
+        default:
+            return NPERR_GENERIC_ERROR;
+        }
+        return NPERR_NO_ERROR;
     }
 
     if (NpapiPluginPtr plugin = getPlugin(instance)) {
@@ -341,6 +387,7 @@ NPError NpapiPluginModule::NPP_GetValue(NPP instance, NPPVariable variable, void
 
 NPError NpapiPluginModule::NPP_SetValue(NPP instance, NPNVariable variable, void *value)
 {
+    FBLOG_TRACE("NPAPI", (void*) instance << "variable: " << (void*)variable);
     if (!validInstance(instance)) {
         return NPERR_INVALID_INSTANCE_ERROR;
     }

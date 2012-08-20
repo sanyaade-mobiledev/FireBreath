@@ -12,8 +12,9 @@ License:    Dual license model; choose one of two:
 Copyright 2009 PacketPass, Inc and the Firebreath development team
 \**********************************************************/
 
-#include "Element.h"
 #include "variant_list.h"
+#include "../precompiled_headers.h" // On windows, everything above this line in PCH
+#include "Element.h"
 
 using namespace FB::DOM;
 
@@ -96,7 +97,7 @@ std::vector<ElementPtr> Element::getElementsByTagName(const std::string& tagName
     std::vector<FB::JSObjectPtr> tagList = callMethod<std::vector<FB::JSObjectPtr> >("getElementsByTagName", FB::variant_list_of(tagName));
     std::vector<FB::JSObjectPtr>::iterator it;
     std::vector<ElementPtr> outList;
-    for (it = tagList.begin(); it != tagList.end(); it++)
+    for (it = tagList.begin(); it != tagList.end(); ++it)
     {
         outList.push_back(Element::create(*it));
     }

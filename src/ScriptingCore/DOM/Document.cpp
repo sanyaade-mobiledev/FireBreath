@@ -15,6 +15,7 @@ Copyright 2009 PacketPass, Inc and the Firebreath development team
 #include "variant.h"
 #include "variant_list.h"
 #include "Window.h"
+#include "../precompiled_headers.h" // On windows, everything above this line in PCH
 
 #include "Document.h"
 
@@ -40,3 +41,8 @@ ElementPtr Document::getBody() const
     return Element::create(api);
 }
 
+FB::DOM::ElementPtr Document::createElement(const std::string &name) const
+{
+	JSObjectPtr api = callMethod<FB::JSObjectPtr>("createElement", FB::variant_list_of(name));
+	return Element::create(api);
+}

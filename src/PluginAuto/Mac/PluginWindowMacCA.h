@@ -1,5 +1,5 @@
 /**********************************************************\
-Original Author: Anson MacKeracher 
+Original Author: Anson MacKeracher
 
 Created:    May 5, 2010
 License:    Dual license model; choose one of two:
@@ -19,24 +19,23 @@ Copyright 2010 Anson MacKeracher, Firebreath development team
 #include "PluginWindowMac.h"
 
 namespace FB
-    {
+{
     class PluginWindowMacCA: public PluginWindowMac
     {
     public:
-        PluginWindowMacCA(bool invalidating);
+        PluginWindowMacCA();
         virtual ~PluginWindowMacCA();
 
-		NPError SetWindow(NPWindow* window);
+        NPError SetWindow(NPWindow* window);
+        int16_t GetValue(NPPVariable variable, void *value);
 
         DrawingModel getDrawingModel() const { return DrawingModelCoreAnimation; }
-		void* getDrawingPrimitive() const { return m_layer; }
-		WindowRef getWindowRef() const { return NULL; }
+        void* getDrawingPrimitive() const { return m_layer; }
+        WindowRef getWindowRef() const { return NULL; }
 
-        void InvalidateWindow() const;
-
-    private:
-		void* m_layer;
-		bool m_invalidating;		
+    protected:
+        void* m_layer;
+        void* m_txtlayer;
     };
 };
 #endif // H_PLUGINWINDOWMACCA

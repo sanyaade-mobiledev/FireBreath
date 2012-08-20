@@ -15,16 +15,27 @@ Copyright 2009 Richard Bateman, Firebreath development team
 #include <typeinfo>
 #include "JSObject.h"
 
+#include "precompiled_headers.h" // On windows, everything above this line in PCH
 #include "NPJavascriptObject.h"
 
 using namespace FB::Npapi;
 
-NPJavascriptObject *NPJavascriptObject::NewObject(NpapiBrowserHostPtr host, FB::JSAPIWeakPtr api, bool auto_release/* = false*/)
+NPJavascriptObject *NPJavascriptObject::NewObject(const NpapiBrowserHostPtr& host, const FB::JSAPIWeakPtr& api, bool auto_release/* = false*/)
 {
     NPJavascriptObject *obj = static_cast<NPJavascriptObject *>(host->CreateObject(&NPJavascriptObjectClass));
 
-    obj->setAPI(api, host);
-    obj->m_autoRelease = auto_release;
+    if (obj) { // There are certain cases where this may have failed;
+               // If obj is null, return null; it's probably during shutdown
+        obj->setAPI(api, host);
+        obj->m_autoRelease = auto_release;
+        if (auto_release) {
+            // If we're autoreleasing it we need to autoretain it
+            FB::JSAPIPtr api_strong(api.lock());
+            if (api_strong) {
+                host->retainJSAPIPtr(api_strong);
+            }
+        }
+    }
     return obj;
 }
 
@@ -35,24 +46,22 @@ bool NPJavascriptObject::isNPJavaScriptObject(const NPObject* const npo)
 
 NPJavascriptObject::NPJavascriptObject(NPP npp)
     : m_valid(true), m_autoRelease(false), m_addEventFunc(boost::make_shared<NPO_addEventListener>(this)),
-    m_removeEventFunc(boost::make_shared<NPO_removeEventListener>(this))
+    m_removeEventFunc(boost::make_shared<NPO_removeEventListener>(this)),
+	m_getLastExceptionFunc(boost::make_shared<NPO_getLastException>(this))
 {
     m_sharedRef = boost::make_shared<FB::ShareableReference<NPJavascriptObject> >(this);
 }
 
 NPJavascriptObject::~NPJavascriptObject(void)
 {
-    if (m_autoRelease) {
-        FB::JSAPIPtr api(m_api.lock());
+    if (m_autoRelease && !m_browser.expired() && !m_api.expired()) {
         // If the JSAPI object is still around and we're set to autorelease, tell the BrowserHost
         // that we're done with it.  Otherwise it's either gone or we don't control its lifecycle
-        if (api) {
-            m_browser->releaseJSAPIPtr(api);
-        }
+        getHost()->releaseJSAPIPtr(m_api.lock());
     }
 }
 
-void NPJavascriptObject::setAPI(FB::JSAPIWeakPtr api, NpapiBrowserHostPtr host)
+void NPJavascriptObject::setAPI(const FB::JSAPIWeakPtr& api, const NpapiBrowserHostPtr& host)
 {
     m_api = api;
     m_browser = host;
@@ -62,27 +71,31 @@ void NPJavascriptObject::Invalidate()
 {
     m_valid = false;
     try {
-        getAPI()->invalidate();
+        if (!m_api.expired())
+            getAPI()->invalidate();
     } catch(const std::bad_cast&) {
     }
 }
 
 bool NPJavascriptObject::HasMethod(NPIdentifier name)
 {
+    if (!isValid()) return false;
     try {
-        std::string mName = m_browser->StringFromIdentifier(name);
+        std::string mName = getHost()->StringFromIdentifier(name);
         if (mName == "toString") return true;
         return !getAPI()->HasMethodObject(mName) && getAPI()->HasMethod(mName);
     } catch (const std::bad_cast&) {
         return false; // invalid object
     } catch (const script_error& e) {
-        m_browser->SetException(this, e.what());
+        if (!m_browser.expired())
+            getHost()->SetException(this, e.what());
+		m_getLastExceptionFunc->setMessage(e.what());
         return false;
     }
 }
 FB::variant FB::Npapi::NPJavascriptObject::NPO_addEventListener::exec( const std::vector<variant>& args )
 {
-    if (args.size() > 1 && args.size() < 4) {
+    if (obj->isValid() && args.size() > 1 && args.size() < 4) {
         try {
             std::string evtName = "on" + args[0].convert_cast<std::string>();
             FB::JSObjectPtr method(args[1].convert_cast<FB::JSObjectPtr>());
@@ -98,7 +111,7 @@ FB::variant FB::Npapi::NPJavascriptObject::NPO_addEventListener::exec( const std
 
 FB::variant FB::Npapi::NPJavascriptObject::NPO_removeEventListener::exec( const std::vector<variant>& args )
 {
-    if (args.size() > 1 && args.size() < 4) {
+    if (obj->isValid() && args.size() > 1 && args.size() < 4) {
         try {
             std::string evtName = "on" + args[0].convert_cast<std::string>();
             FB::JSObjectPtr method(args[1].convert_cast<FB::JSObjectPtr>());
@@ -111,161 +124,177 @@ FB::variant FB::Npapi::NPJavascriptObject::NPO_removeEventListener::exec( const 
         throw FB::invalid_arguments();
     }
 }
+
+FB::variant FB::Npapi::NPJavascriptObject::NPO_getLastException::m_msg;
+
 bool NPJavascriptObject::Invoke(NPIdentifier name, const NPVariant *args, uint32_t argCount, NPVariant *result)
 {
     VOID_TO_NPVARIANT(*result);
+    if (!isValid()) return false;
     try {
         std::string mName;
+        NpapiBrowserHostPtr browser(getHost());
         if (name != NULL) {
-            mName = m_browser->StringFromIdentifier(name);
+            mName = browser->StringFromIdentifier(name);
         }
         std::vector<FB::variant> vArgs;
         for (unsigned int i = 0; i < argCount; i++) {
-            vArgs.push_back(m_browser->getVariant(&args[i]));
+            vArgs.push_back(browser->getVariant(&args[i]));
         }
 
         // Default method call
         FB::variant ret = getAPI()->Invoke(mName, vArgs);
-        m_browser->getNPVariant(result, ret);
+        browser->getNPVariant(result, ret);
         return true;
     } catch (const std::bad_cast&) {
         return false; // invalid object
     } catch (const script_error& e) {
-        m_browser->SetException(this, e.what());
+        if (!m_browser.expired()) 
+            getHost()->SetException(this, e.what());
+		m_getLastExceptionFunc->setMessage(e.what());
         return false;
     }
 }
 
 bool NPJavascriptObject::InvokeDefault(const NPVariant *args, uint32_t argCount, NPVariant *result)
 {
-    return Invoke(m_browser->GetStringIdentifier(""), args, argCount, result);
+    return Invoke(NULL, args, argCount, result);
 }
 
 bool NPJavascriptObject::HasProperty(NPIdentifier name)
 {
+    if (!isValid()) return false;
     try {
+        NpapiBrowserHostPtr browser(getHost());
         // Handle numeric identifiers
-        if(!m_browser->IdentifierIsString(name)) {
-            int32_t sIdx = m_browser->IntFromIdentifier(name);
+        if(!browser->IdentifierIsString(name)) {
+            int32_t sIdx = browser->IntFromIdentifier(name);
             return getAPI()->HasProperty(sIdx);
         }
 
-        std::string sName(m_browser->StringFromIdentifier(name));
+        std::string sName(browser->StringFromIdentifier(name));
         // We check for events of that name as well in order to allow setting of an event handler in the
         // old javascript style, i.e. plugin.onload = function() .....;
 
-        if (sName == "addEventListener" || sName == "removeEventListener") {
+        if (sName == "addEventListener" || sName == "removeEventListener" || sName == "getLastException") {
             return true;
         } else if (sName != "toString" && getAPI()->HasMethodObject(sName))
             return true;
         else
-            return !HasMethod(name) && (getAPI()->HasEvent(sName) || getAPI()->HasProperty(sName));
+            return !HasMethod(name) && getAPI()->HasProperty(sName);
     } catch (const std::bad_cast&) {
         return false; // invalid object
     } catch (const script_error& e) {
-        m_browser->SetException(this, e.what());
+        if (!m_browser.expired()) 
+            getHost()->SetException(this, e.what());
+		m_getLastExceptionFunc->setMessage(e.what());
         return false;
     }
 }
 
 bool NPJavascriptObject::GetProperty(NPIdentifier name, NPVariant *result)
 {
+    if (!isValid()) return false;
     try {
+        NpapiBrowserHostPtr browser(getHost());
         FB::variant res;
-        if (m_browser->IdentifierIsString(name)) {
-            std::string sName(m_browser->StringFromIdentifier(name));
+        if (browser->IdentifierIsString(name)) {
+            std::string sName(browser->StringFromIdentifier(name));
             if (sName == "addEventListener") {
                 res = m_addEventFunc;
             } else if (sName == "removeEventListener") {
                 res = m_removeEventFunc;
-            } else if (getAPI()->HasEvent(sName)) {
-                FB::JSObjectPtr tmp(getAPI()->getDefaultEventMethod(sName));
-                if (tmp != NULL)
-                    res = tmp;
+			} else if (sName == "getLastException") {
+				res = m_getLastExceptionFunc;
             } else if (getAPI()->HasMethodObject(sName)) {
                 res = getAPI()->GetMethodObject(sName);
             } else {
                 res = getAPI()->GetProperty(sName);
             }
         } else {
-            res = getAPI()->GetProperty(m_browser->IntFromIdentifier(name));
+            res = getAPI()->GetProperty(browser->IntFromIdentifier(name));
         }
 
-        m_browser->getNPVariant(result, res);
+        browser->getNPVariant(result, res);
         return true;
     } catch (const std::bad_cast&) {
         return false; // invalid object
     } catch (const script_error& e) {
-        m_browser->SetException(this, e.what());
+        if (!m_browser.expired())
+            getHost()->SetException(this, e.what());
+		m_getLastExceptionFunc->setMessage(e.what());
         return false;
     }
 }
 
 bool NPJavascriptObject::SetProperty(NPIdentifier name, const NPVariant *value)
 {
+    if (!isValid()) return false;
     try {
-        FB::variant arg = m_browser->getVariant(value);
-        if (m_browser->IdentifierIsString(name)) {
-            std::string sName(m_browser->StringFromIdentifier(name));
-            if (getAPI()->HasEvent(sName)) {
-                if(value->type == NPVariantType_Null) {
-                    FB::JSObjectPtr nullEvent;
-                    getAPI()->setDefaultEventMethod(sName, nullEvent);
-                } else if(value->type == NPVariantType_Object) {
-                    FB::JSObjectPtr tmp(arg.cast<FB::JSObjectPtr>());
-                    getAPI()->setDefaultEventMethod(sName, tmp);
-                }
-            } else if (getAPI()->HasMethodObject(sName)) {
+        NpapiBrowserHostPtr browser(getHost());
+        FB::variant arg = browser->getVariant(value);
+        if (browser->IdentifierIsString(name)) {
+            std::string sName(browser->StringFromIdentifier(name));
+            if (getAPI()->HasMethodObject(sName)) {
                 throw FB::script_error("This property cannot be changed");
             } else {
                 getAPI()->SetProperty(sName, arg);
             }
         } else {
-            getAPI()->SetProperty(m_browser->IntFromIdentifier(name), arg);
+            getAPI()->SetProperty(browser->IntFromIdentifier(name), arg);
         }
         return true;
     } catch (const std::bad_cast&) {
         return false; // invalid object
     } catch(const script_error& e) {
-        m_browser->SetException(this, e.what());
+        if (!m_browser.expired())
+            getHost()->SetException(this, e.what());
+		m_getLastExceptionFunc->setMessage(e.what());
         return false;
     }
 }
 
 bool NPJavascriptObject::RemoveProperty(NPIdentifier name)
 {
+    if (!isValid()) return false;
     try {
-        if (m_browser->IdentifierIsString(name)) {
-            std::string sName(m_browser->StringFromIdentifier(name));
-            if (getAPI()->HasEvent(sName)) {
-                FB::JSObjectPtr nullEvent;
-                getAPI()->setDefaultEventMethod(sName, nullEvent);
-            }
+        NpapiBrowserHostPtr browser(getHost());
+        if (browser->IdentifierIsString(name)) {
+            std::string sName(browser->StringFromIdentifier(name));
+            getAPI()->RemoveProperty(sName);
+        } else {
+            getAPI()->RemoveProperty(browser->IntFromIdentifier(name));
         }
-        return false;
+        return true;
     } catch (const std::bad_cast&) {
         return false; // invalid object
     } catch(const script_error& e) {
-        m_browser->SetException(this, e.what());
+        if (!m_browser.expired())
+            getHost()->SetException(this, e.what());
+		m_getLastExceptionFunc->setMessage(e.what());
         return false;
     }
 }
 
 bool NPJavascriptObject::Enumeration(NPIdentifier **value, uint32_t *count)
 {
+    if (!isValid()) return false;
     try {
         typedef std::vector<std::string> StringArray;
         StringArray memberList;
         getAPI()->getMemberNames(memberList);
-        *count = memberList.size() + 2;
+        *count = memberList.size() + 3;
         NPIdentifier *outList(NULL);
-        outList = (NPIdentifier*)m_browser->MemAlloc((uint32_t)(sizeof(NPIdentifier) * *count));
+
+        NpapiBrowserHostPtr browser(getHost());
+        outList = (NPIdentifier*)browser->MemAlloc((uint32_t)(sizeof(NPIdentifier) * *count));
         
         for (uint32_t i = 0; i < memberList.size(); i++) {
-            outList[i] = m_browser->GetStringIdentifier(memberList.at(i).c_str());
+            outList[i] = browser->GetStringIdentifier(memberList.at(i).c_str());
         }
-        outList[memberList.size()] = m_browser->GetStringIdentifier("addEventListener");
-        outList[memberList.size() + 1] = m_browser->GetStringIdentifier("removeEventListener");
+        outList[memberList.size()] = browser->GetStringIdentifier("addEventListener");
+        outList[memberList.size() + 1] = browser->GetStringIdentifier("removeEventListener");
+        outList[memberList.size() + 2] = browser->GetStringIdentifier("getLastException");
         *value = outList;
         return true;
     } catch (const std::bad_cast&) {
@@ -273,20 +302,34 @@ bool NPJavascriptObject::Enumeration(NPIdentifier **value, uint32_t *count)
         return false; // invalid object
     } catch (const script_error& e) {
         *count = 0;
-        m_browser->SetException(this, e.what());
+        if (!m_browser.expired())
+            getHost()->SetException(this, e.what());
+		m_getLastExceptionFunc->setMessage(e.what());
         return false;
     }
 }
 
 bool NPJavascriptObject::Construct(const NPVariant *args, uint32_t argCount, NPVariant *result)
 {
+    VOID_TO_NPVARIANT(*result);
+    if (!isValid()) return false;
     try {
-        // TODO: add support for constructing
-        return false;
+        NpapiBrowserHostPtr browser(getHost());
+
+        std::vector<FB::variant> vArgs;
+        for (unsigned int i = 0; i < argCount; i++) {
+            vArgs.push_back(browser->getVariant(&args[i]));
+        }
+        // Default method call
+        FB::variant ret = getAPI()->Construct(vArgs);
+        browser->getNPVariant(result, ret);
+        return true;
     } catch (const std::bad_cast&) {
         return false; // invalid object
     } catch (const script_error& e) {
-        m_browser->SetException(this, e.what());
+        if (!m_browser.expired())
+            getHost()->SetException(this, e.what());
+		m_getLastExceptionFunc->setMessage(e.what());
         return false;
     }
 }
@@ -297,7 +340,7 @@ bool NPJavascriptObject::Construct(const NPVariant *args, uint32_t argCount, NPV
   You might look at these as the "entry points" for the NPJavascriptObject
 \****************************************************************************/
 
-NPObject *NPJavascriptObject::Allocate(NPP npp, NPClass *aClass)
+NPObject *NPJavascriptObject::_Allocate(NPP npp, NPClass *aClass)
 {
     return (NPObject *)new NPJavascriptObject(npp);
 }
@@ -371,7 +414,7 @@ bool NPJavascriptObject::_Construct(NPObject *npobj, const NPVariant *args, uint
 // when you call NPN_CreateObject, and how it knows how to call functions on it
 NPClass NPJavascriptObject::NPJavascriptObjectClass = {
     NP_CLASS_STRUCT_VERSION_CTOR,
-    NPJavascriptObject::Allocate,
+    NPJavascriptObject::_Allocate,
     NPJavascriptObject::_Deallocate,
     NPJavascriptObject::_Invalidate,
     NPJavascriptObject::_HasMethod,

@@ -1,5 +1,5 @@
 /**********************************************************\
-Original Author: Anson MacKeracher 
+Original Author: Anson MacKeracher
 
 Created:    Jul 12, 2010
 License:    Dual license model; choose one of two:
@@ -24,16 +24,21 @@ namespace FB {
         PluginWindowMacCG();
         virtual ~PluginWindowMacCG();
 
-		NPError SetWindow(NPWindow* window);
+        NPError SetWindow(NPWindow* window);
 
         DrawingModel getDrawingModel() const { return DrawingModelCoreGraphics; }
-		void* getDrawingPrimitive() const { return m_cgContext.context; }
-		WindowRef getWindowRef() const { return (WindowRef) m_cgContext.window; }
+        void* getDrawingPrimitive() const { return m_cgContext.context; }
+        WindowRef getWindowRef() const { return (WindowRef) m_cgContext.window; }
 
-        void InvalidateWindow() const;
+        bool SendEvent(PluginEvent* evt);
+
+    protected:
+        void DrawLabel(CGContextRef cgContext, FB::Rect clip);
 
     public:
         NP_CGContext m_cgContext;
+        uint64_t m_count;
+        std::list<uint64_t> m_frames;
     };
 };
 

@@ -15,10 +15,13 @@
 #include "FactoryBase.h"
 #include "ConstructDefaultPluginWindows.h"
 #include "NpapiPluginFactory.h"
+
 #ifdef FB_WIN
 #include "ActiveXFactoryDefinitions.h"
 #endif
+
 #include "PluginInfo.h"
+#include "precompiled_headers.h" // On windows, everything above this line in PCH
 
 FB::FactoryBase::FactoryBase()
 {
@@ -101,9 +104,13 @@ HRESULT FB::FactoryBase::UpdateWindowsRegistry( bool install )
 #endif
 
 #ifdef FB_MACOSX
-FB::PluginWindowMacCA* FB::FactoryBase::createPluginWindowMacCA(bool invalidating)
+FB::PluginWindowMacICA* FB::FactoryBase::createPluginWindowMacICA()
 {
-    return FB::createPluginWindowMacCA(invalidating);
+    return FB::createPluginWindowMacICA();
+}
+FB::PluginWindowMacCA* FB::FactoryBase::createPluginWindowMacCA()
+{
+    return FB::createPluginWindowMacCA();
 }
 FB::PluginWindowMacCG* FB::FactoryBase::createPluginWindowMacCG()
 {

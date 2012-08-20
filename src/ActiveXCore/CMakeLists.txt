@@ -54,6 +54,10 @@ file (GLOB PLUGIN RELATIVE ${CMAKE_CURRENT_SOURCE_DIR}
     registrymap.hpp
 )
 
+file (GLOB PCH RELATIVE ${CMAKE_CURRENT_SOURCE_DIR}
+	precompiled_*
+)
+
 SOURCE_GROUP(ActiveXScripting FILES ${SCRIPTING})
 
 SOURCE_GROUP(ActiveXControl FILES ${PLUGIN})
@@ -64,9 +68,11 @@ set (SOURCES
     ${SCRIPTING}
     ${PLUGIN}
     ${AXDOM}
+    ${PCH}
     )
 
 add_library(${PROJECT_NAME} STATIC ${SOURCES})
+ADD_PRECOMPILED_HEADER(${PROJECT_NAME} "${CMAKE_CURRENT_SOURCE_DIR}/precompiled_headers.h" "${CMAKE_CURRENT_SOURCE_DIR}/precompiled_headers.cpp" SOURCES)
 set_target_properties(${PROJECT_NAME} PROPERTIES FOLDER "FireBreath Core")
 
 target_link_libraries(${PROJECT_NAME}
@@ -76,8 +82,11 @@ target_link_libraries(${PROJECT_NAME}
     PluginCore
     ScriptingCore
 )
-if (NOT WITH_SYSTEM_BOOST)
-	export(TARGETS ActiveXCore ${CMAKE_THREAD_LIBS_INIT} ${Boost_LIBRARIES} ${LIBDL_LIBRARIES} APPEND FILE ${FB_EXPORT_FILE})
-else()
-	export(TARGETS ActiveXCore ${CMAKE_THREAD_LIBS_INIT} ${LIBDL_LIBRARIES} APPEND FILE ${FB_EXPORT_FILE})
+export(TARGETS ActiveXCore ${CMAKE_THREAD_LIBS_INIT} ${LIBDL_LIBRARIES} APPEND FILE ${FB_EXPORT_FILE})
+if (FB_RELEASE)
+    install (TARGETS ActiveXCore
+        EXPORT FireBreath_Exports
+        DESTINATION bin/\${BUILD_TYPE}
+        COMPONENT FBCORE
+        )
 endif()

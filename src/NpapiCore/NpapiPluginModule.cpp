@@ -14,36 +14,67 @@ Copyright 2009 Richard Bateman, Firebreath development team
 
 #include <stdexcept>
 
-#include "NpapiPluginModule.h"
 #include <cassert>
 #include <boost/thread.hpp>
 #include "logging.h"
+#include "BrowserHost.h"
+#include "PluginCore.h"
+#include <assert.h>
+#include "precompiled_headers.h" // On windows, everything above this line in PCH
 
+#include "NpapiPluginModule.h"
 using namespace FB::Npapi;
 
-volatile bool NpapiPluginModule::PluginModuleInitialized(false);
+volatile uint32_t NpapiPluginModule::PluginModuleInitialized(0);
+NpapiPluginModule::Modules NpapiPluginModule::m_modules;
 
-NpapiPluginModule::NpapiPluginModule(bool init/* = true*/)
-    : m_threadId(boost::this_thread::get_id()), m_init(init)
-{
-    if (init) {
-        assert(!PluginModuleInitialized);
-        PluginModuleInitialized = true;
+NpapiPluginModule* NpapiPluginModule::GetModule(const void* key) {
+    if (!NpapiPluginModule::PluginModuleInitialized) {
         FB::Log::initLogging();
         getFactoryInstance()->globalPluginInitialize();
     }
-    memset(&NPNFuncs, 0, sizeof(NPNetscapeFuncs));
+    NpapiPluginModule* rval = NULL;
+    Modules::iterator module = m_modules.find(key);
+    if (m_modules.end() == module) {
+        rval = new NpapiPluginModule();
+        m_modules[key] = rval;
+        NpapiPluginModule::PluginModuleInitialized++;
+    } else
+        rval = module->second;
+    return rval;
 }
+void NpapiPluginModule::ReleaseModule(const void* key) {
+    Modules::iterator module = m_modules.find(key);
+    if (m_modules.end() != module) {
+        delete module->second;
+        m_modules.erase(module);
+        NpapiPluginModule::PluginModuleInitialized--;
+    }
 
-NpapiPluginModule::~NpapiPluginModule(void)
-{
-    if (m_init) {
-        assert(PluginModuleInitialized);
-        PluginModuleInitialized = false;
+    if (!NpapiPluginModule::PluginModuleInitialized) {
+
         getFactoryInstance()->globalPluginDeinitialize();
+
+        // NOTE: If this assertion fails you have some sort of memory leak; BrowserHost objects
+        // are reference counted, so you have a shared_ptr to your browserhost sometime. This
+        // can be a big problem because BrowserHost manages a lot of your memory and if you get
+        // a new one for each instances on each page (including page reloads).
+        assert(BrowserHost::getInstanceCount() == 0);
+        assert(PluginCore::getActivePluginCount() == 0);
         FB::Log::stopLogging();
     }
 }
+
+NpapiPluginModule::NpapiPluginModule()
+    : m_threadId(boost::this_thread::get_id())
+{
+    memset(&NPNFuncs, 0, sizeof(NPNetscapeFuncs));
+}
+
+NpapiPluginModule::~NpapiPluginModule()
+{
+}
+
 
 void NpapiPluginModule::assertMainThread()
 {

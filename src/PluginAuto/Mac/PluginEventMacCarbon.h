@@ -1,5 +1,5 @@
 /**********************************************************\
-Original Author: Anson MacKeracher 
+Original Author: Anson MacKeracher
 
 Created:    Jul 12, 2010
 License:    Dual license model; choose one of two:
@@ -20,7 +20,7 @@ Copyright 2010 Anson MacKeracher, Firebreath development team
 #include "PluginEventMac.h"
 
 namespace FB {
-    
+
     ////////////////////////////////////////////////////////////////////////////////////////////////////
     /// @class  PluginEventMacCarbon
     ///
@@ -31,14 +31,24 @@ namespace FB {
     public:
         PluginEventMacCarbon();
         virtual ~PluginEventMacCarbon();
-        
+
         int16_t HandleEvent(void* event);
-		EventModel getEventModel() const { return EventModelCarbon; }
+        EventModel getEventModel() const { return EventModelCarbon; }
 
-	protected:
-		Point GlobalToLocal(Point location);
+    protected:
+        Point GlobalToLocal(Point location);
+        bool isMouseOver(Point location);
 
-		short m_old_h, m_old_v; // Keep track of mouse movement coordinates
+        void CarbonToNPCocoaEvent(const EventRecord* evt, NPCocoaEvent& rval);
+        NPNSString* TranslateKeyEventRecord(const EventRecord *event);
+
+        short m_old_h, m_old_v; // Keep track of mouse movement coordinates
+        bool m_mouseEntered; // Keep track of mouseEntered/mouseExited
+        CFDataRef m_tisKeyLayoutData;
+        UInt32 m_deadKeyState;
+#if __MAC_OS_X_VERSION_MAX_ALLOWED >= 1050
+        TISInputSourceRef m_tisInputSource;
+#endif
     };
 };
 

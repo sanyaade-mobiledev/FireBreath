@@ -33,11 +33,12 @@ endif()
 include_directories (
     ${Boost_INCLUDE_DIRS}
 	${CMAKE_CURRENT_SOURCE_DIR}
-    ${SCRIPTINGCORE_SOURCE_DIR}
-    ${PLUGINAUTO_SOURCE_DIR}
-    ${PLUGINCORE_SOURCE_DIR}
+    ${FB_SCRIPTINGCORE_SOURCE_DIR}
+    ${FB_PLUGINAUTO_SOURCE_DIR}
+    ${FB_PLUGINCORE_SOURCE_DIR}
     ${FBLIB_INCLUDE_DIRS}
-    ${CONFIG_DIR}
+    ${ATL_INCLUDE_DIRS}
+    ${FB_CONFIG_DIR}
 )
 
 file (GLOB GENERAL_SRC RELATIVE ${CMAKE_CURRENT_SOURCE_DIR}
@@ -112,6 +113,9 @@ append_firebreath_link_library(HttpService)
 
 if (WIN32)
     append_firebreath_link_library(Wininet)
+    if (ATL_LIBRARY)
+        append_firebreath_link_library(${ATL_LIBRARY})
+    endif()
 elseif (UNIX)
     if (APPLE)
         find_library(CORE_SERVICES CoreServices)

@@ -21,3 +21,5 @@ src/libs/openssl/openssl
 .DS_Store
 *.kdev*
 .kdev*
+tags
+bin

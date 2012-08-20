@@ -15,6 +15,11 @@ Copyright 2010 Facebook, Inc
 #include <string>
 #include <boost/scoped_ptr.hpp>
 
+#include "FactoryBase.h"
+#include "logging.h"
+#include "utf8_tools.h"
+
+#include "precompiled_headers.h" // On windows, everything above this line in PCH
 #include "log4cplus/config/defines.hxx"
 #include "log4cplus/logger.h"
 #include "log4cplus/loglevel.h"
@@ -25,14 +30,12 @@ Copyright 2010 Facebook, Inc
 #include "log4cplus/consoleappender.h"
 #include "log4cplus/nullappender.h"
 
-#include "FactoryBase.h"
-#include "logging.h"
-#include "utf8_tools.h"
-
 namespace 
 {
     bool logging_started = false;
 }
+
+static log4cplus::LogLevel translate_logLevel(FB::Log::LogLevel ll);
 
 void FB::Log::initLogging()
 {
@@ -42,6 +45,10 @@ void FB::Log::initLogging()
     bool addedAppender = false;
 
     log4cplus::Logger logger = log4cplus::Logger::getInstance(L"FireBreath");
+
+    FB::Log::LogLevel ll = getFactoryInstance()->getLogLevel();
+    logger.setLogLevel(translate_logLevel(ll));
+
     FB::Log::LogMethodList mlist;
     getFactoryInstance()->getLoggingMethods(mlist);
 
@@ -61,7 +68,7 @@ void FB::Log::initLogging()
             logger.addAppender(debugAppender);
             addedAppender = true;
 #endif
-            }
+            } break;
         case FB::Log::LogMethod_File: {
             log4cplus::SharedAppenderPtr fileAppender(new log4cplus::FileAppender(FB::utf8_to_wstring(it->second)));
             std::auto_ptr<log4cplus::Layout> layout(new log4cplus::TTCCLayout());
@@ -88,6 +95,24 @@ void FB::Log::stopLogging()
     log4cplus::Logger logger = log4cplus::Logger::getInstance(L"FireBreath");
     logger.shutdown();
     logging_started = false;
+}
+
+static log4cplus::LogLevel translate_logLevel(FB::Log::LogLevel ll){
+    
+    switch(ll) {
+        case(FB::Log::LogLevel_Trace) :
+            return log4cplus::TRACE_LOG_LEVEL;
+        case(FB::Log::LogLevel_Debug) :
+            return log4cplus::DEBUG_LOG_LEVEL;
+        case(FB::Log::LogLevel_Info) : 
+            return log4cplus::INFO_LOG_LEVEL;
+        case(FB::Log::LogLevel_Warn) :
+            return log4cplus::WARN_LOG_LEVEL;
+        case(FB::Log::LogLevel_Error) : 
+            return log4cplus::ERROR_LOG_LEVEL;
+        default:
+            return log4cplus::WARN_LOG_LEVEL;
+    }
 }
 
 void FB::Log::trace(const std::string& src, const std::string& msg, const char *file, int line, const char *fn)

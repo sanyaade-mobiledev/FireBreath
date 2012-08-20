@@ -87,11 +87,21 @@ set (SOURCES
     ${X11_SOURCES}
     )
 
+if (APPLE)
+    FIND_LIBRARY(FOUNDATION NAMES foundation)
+    include_directories(${FOUNDATION}/Headers)
+endif()
+
 add_library(${PROJECT_NAME} STATIC ${SOURCES})
+ADD_PRECOMPILED_HEADER(${PROJECT_NAME} "${CMAKE_CURRENT_SOURCE_DIR}/precompiled_headers.h" "${CMAKE_CURRENT_SOURCE_DIR}/precompiled_headers.cpp" SOURCES)
 set_target_properties(${PROJECT_NAME} PROPERTIES FOLDER "FireBreath Core")
 
-if (NOT WITH_SYSTEM_BOOST)
-	export(TARGETS PluginCore ${Boost_LIBRARIES} APPEND FILE ${FB_EXPORT_FILE})
-else()
-	export(TARGETS PluginCore APPEND FILE ${FB_EXPORT_FILE})
+export(TARGETS PluginCore APPEND FILE ${FB_EXPORT_FILE})
+
+if (FB_RELEASE)
+    install (TARGETS PluginCore
+        EXPORT FireBreath_Exports
+        DESTINATION bin/\${BUILD_TYPE}
+        COMPONENT FBCORE
+        )
 endif()

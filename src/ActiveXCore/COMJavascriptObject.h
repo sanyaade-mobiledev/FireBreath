@@ -55,6 +55,13 @@ namespace FB {
                 
                 obj->setAPI(api, host);
                 obj->m_autoRelease = auto_release;
+                if (auto_release) {
+                    FB::JSAPIPtr tmp(api.lock());
+                    // If we are auto-releasing it then we need to retain it as well
+                    if (tmp) {
+                        host->retainJSAPIPtr(tmp);
+                    }
+                }
                 IDispatchEx *retval;
                 hr = obj->QueryInterface(IID_IDispatchEx, (void **)&retval);
 
@@ -92,7 +99,9 @@ namespace FB {
                     // If the JSAPI object is still around and we're set to autorelease, tell the BrowserHost
                     // that we're done with it.  Otherwise it's either gone or we don't control its lifecycle
                     if (api) {
-                        m_host->releaseJSAPIPtr(api);
+                        ActiveXBrowserHostPtr host = getHost();
+                        if (host)
+                            host->releaseJSAPIPtr(api);
                     }
                 }
             }

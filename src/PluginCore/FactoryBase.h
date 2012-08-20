@@ -25,6 +25,14 @@
 
 #include "PluginWindowForwardDecl.h"
 
+#ifdef FB_MACOSX
+#include <Carbon/Carbon.h>
+#if !defined(__QUICKDRAWAPI__) && !defined(NP_NO_QUICKDRAW)
+#define NP_NO_QUICKDRAW 1
+#endif
+#endif
+
+
 namespace FB
 {
     FB_FORWARD_PTR(FactoryBase);
@@ -180,6 +188,7 @@ namespace FB
         ///         this method.
         ///
         /// @param  host    The BrowserHost object for the browser containing this plugin
+        /// @param  mimetype
         ///
         /// @return An NpapiPluginPtr containing an NpapiPlugin derived plugin handler
         ////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -210,7 +219,7 @@ namespace FB
         ///
         /// @brief  Creates a PluginWindowWin derived plugin window object
         ///
-        /// @param  Platform specific data structure for window context information (including the HWND usually) 
+        /// @param  ctx	Platform specific data structure for window context information (including the HWND usually) 
         ///
         /// @return A PluginWindowWin* to the object that should handle the plugin window
         ////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -221,7 +230,7 @@ namespace FB
         ///
         /// @brief  Creates a PluginWindowlessWin derived plugin window object
         ///
-        /// @param  Platform specific data structure for window context information (including the HDC usually) 
+        /// @param  ctx	Platform specific data structure for window context information (including the HDC usually) 
         ///
         /// @return A PluginWindowlessWin* to the object that should handle the plugin window
         ////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -233,22 +242,25 @@ namespace FB
       
 #ifdef FB_MACOSX
         ////////////////////////////////////////////////////////////////////////////////////////////////////
-        /// @fn virtual PluginWindowMacCA* createPluginWindowMacCA(bool invalidating);
+        /// @fn virtual PluginWindowMacICA* createPluginWindowMacICA();
         ///
-        /// @brief  Creates a PluginWindow derived plugin window object for CoreAnimation
-        ///
-        /// @param  host    The BrowserHost object for the browser containing this plugin
-        /// @param  invalidating    
+        /// @brief  Creates a PluginWindow derived plugin window object for Invalidating CoreAnimation
         ///
         /// @return A pointer to the object that should handle the plugin window
         ////////////////////////////////////////////////////////////////////////////////////////////////////
-        virtual PluginWindowMacCA* createPluginWindowMacCA(bool invalidating);
+        virtual PluginWindowMacICA* createPluginWindowMacICA();
+        ////////////////////////////////////////////////////////////////////////////////////////////////////
+        /// @fn virtual PluginWindowMacCA* createPluginWindowMacCA();
+        ///
+        /// @brief  Creates a PluginWindow derived plugin window object for CoreAnimation
+        ///
+        /// @return A pointer to the object that should handle the plugin window
+        ////////////////////////////////////////////////////////////////////////////////////////////////////
+        virtual PluginWindowMacCA* createPluginWindowMacCA();
         ////////////////////////////////////////////////////////////////////////////////////////////////////
         /// @fn virtual PluginWindowMacCG* createPluginWindowMacCG();
         ///
         /// @brief  Creates a PluginWindow derived plugin window object for CoreGraphics
-        ///
-        /// @param  host    The BrowserHost object for the browser containing this plugin
         ///
         /// @return A pointer to the object that should handle the plugin window
         ////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -265,10 +277,10 @@ namespace FB
         ////////////////////////////////////////////////////////////////////////////////////////////////////
         virtual PluginWindowMacQD* createPluginWindowMacQD();
 #endif
-		
-		virtual PluginEventMacCocoa* createPluginEventMacCocoa();
+        
+        virtual PluginEventMacCocoa* createPluginEventMacCocoa();
 #ifndef NP_NO_CARBON
-		virtual PluginEventMacCarbon* createPluginEventMacCarbon();
+        virtual PluginEventMacCarbon* createPluginEventMacCarbon();
 #endif
 
 #endif
@@ -279,7 +291,7 @@ namespace FB
         ///
         /// @brief  Creates a PluginWindowX11 derived plugin window object for X11
         ///
-        /// @param  Platform specific data structure for window context information
+        /// @param  ctx	Platform specific data structure for window context information
         ///
         /// @return A pointer to the object that should handle the plugin window
         ////////////////////////////////////////////////////////////////////////////////////////////////////

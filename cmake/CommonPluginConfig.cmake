@@ -43,6 +43,26 @@ set(PLUGIN_INCLUDE_DIRS
     ${FB_CONFIG_DIR}
     )
 
+if (NOT FBMAC_USE_CARBON AND NOT FBMAC_USE_COCOA)
+    # As of Safari 5.1 we have to choose one even if we don't draw
+    set(FBMAC_USE_COCOA 1)
+endif()
+if (NOT FBMAC_USE_INVALIDATINGCOREANIMATION
+        AND NOT FBMAC_USE_COREANIMATION
+        AND NOT FBMAC_USE_COREGRAPHICS
+        AND NOT FBMAC_USE_QUICKDRAW)
+    set(FBMAC_USE_COREGRAPHICS 1)
+endif()
+
+if (NOT FBMAC_USE_CARBON AND FBMAC_USE_QUICKDRAW)
+    message("!! You can't use QuickDraw without Carbon; disabling QuickDraw (it's deprecated anyway)")
+    if (NOT FBMAC_USE_INVALIDATINGCOREANIMATION
+            AND NOT FBMAC_USE_COREANIMATION
+            AND NOT FBMAC_USE_COREGRAPHICS)
+        set(FBMAC_USE_COREGRAPHICS 1)
+    endif()
+endif()
+
 # Clean up PluginConfig values as needed
 # set up the mimetype strings
 string(REPLACE ";" "|" FBMIMETYPE_LIST "${FBSTRING_MIMEType}")
@@ -55,6 +75,33 @@ else()
     set(FB_WIX_INSTALL_LOCATION "AppDataFolder")
 endif()
 
+set(FB_VERSION_SPLIT ${FBSTRING_PLUGIN_VERSION})
+string(REPLACE "." ";" FB_VERSION_SPLIT ${FB_VERSION_SPLIT})
+LIST(LENGTH FB_VERSION_SPLIT _LEN)
+
+list(GET FB_VERSION_SPLIT 0 FBSTRING_VERSION_MAJOR)
+if (_LEN GREATER 1)
+    list(GET FB_VERSION_SPLIT 1 FBSTRING_VERSION_MINOR)
+else()
+    set(FBSTRING_VERSION_MINOR 0)
+endif()
+
+if (_LEN GREATER 2)
+    list(GET FB_VERSION_SPLIT 2 FBSTRING_VERSION_PATCH)
+else()
+    set(FBSTRING_VERSION_PATCH 0)
+endif()
+if (_LEN GREATER 3)
+    list(GET FB_VERSION_SPLIT 3 FBSTRING_VERSION_BUILD)
+else()
+    set(FBSTRING_VERSION_BUILD 0)
+endif()
+
+# fallback to define FBSTRING_PluginDescription for templates if the
+# user hasn't done this in PluginConfig.cmake
+if (NOT FBSTRING_PluginDescription)
+    set(FBSTRING_PluginDescription ${FBSTRING_FileDescription})
+endif()
 
 # configure default generated files
 # TODO: Fix this to not need configure_template; it is suboptimal
@@ -85,7 +132,7 @@ file(GLOB TEMPLATELIST ${FB_CURRENT_PLUGIN_DIR}/templates/[^.]*)
 foreach(TemplateFile ${TEMPLATELIST})
     get_filename_component(CURFILE ${TemplateFile} NAME)
     message("Configuring ${CURFILE}")
-    configure_template(${FB_CURRENT_PLUGIN_DIR}/templates/${CURFILE} ${TEMPLATE_DEST_DIR}/${CURFILE})
+    configure_template(${FB_CURRENT_PLUGIN_DIR}/templates/${CURFILE} ${FB_TEMPLATE_DEST_DIR}/../templates/${CURFILE})
 endforeach()
 
 # Repititions in the following are intentional to fix linking errors due to
@@ -100,21 +147,34 @@ set(PLUGIN_INTERNAL_DEPS
     ${FBLIB_LIBRARIES}
     )
 
+file (GLOB GENERATED
+    ${FB_TEMPLATE_DEST_DIR}/[^.]*
+    ${FB_TEMPLATE_DEST_DIR}/global/[^.]*
+    )
+
+file (GLOB WIN_GENERATED
+    ${FB_TEMPLATE_DEST_DIR}/[^.]*.rgs
+    ${FB_TEMPLATE_DEST_DIR}/[^.]*.def
+    ${FB_TEMPLATE_DEST_DIR}/[^.]*.rc
+    )
+SOURCE_GROUP(Generated FILES ${GENERATED})
+
 if (WIN32)
     set (PLUGIN_INTERNAL_DEPS
         ActiveXCore
         ${PLUGIN_INTERNAL_DEPS}
         ${ATL_LIBRARY}
         psapi
+        Wininet
         )
-
-    file (GLOB GENERATED
-        ${FB_TEMPLATE_DEST_DIR}/[^.]*.rgs
-        ${FB_TEMPLATE_DEST_DIR}/[^.]*.def
-        ${FB_TEMPLATE_DEST_DIR}/[^.]*.rc
-    )
-    SOURCE_GROUP(Generated FILES ${GENERATED})
-
+    file (GLOB IDL_FILES
+        ${FB_TEMPLATE_DEST_DIR}/*.idl)
+    list(REMOVE_ITEM GENERATED ${IDL_FILES})
+else()
+    set_source_files_properties(${WIN_GENERATED}
+        PROPERTIES
+            HEADER_FILE_ONLY 1
+        )
 endif(WIN32)
 
 if (APPLE)
@@ -133,21 +193,25 @@ if (APPLE)
         ${COCOA_FRAMEWORK}
         ${PLUGIN_INTERNAL_DEPS})
     #endif (FBMAC_USE_COCOA)
+    find_library(SYSCONFIG_FRAMEWORK SystemConfiguration)
+    set (PLUGIN_INTERNAL_DEPS
+        ${SYSCONFIG_FRAMEWORK}
+        ${PLUGIN_INTERNAL_DEPS})
 
-    if (FBMAC_USE_COREANIMATION OR FBMAC_USE_COREGRAPHICS)
+    if (FBMAC_USE_COREANIMATION OR FBMAC_USE_COREGRAPHICS OR FBMAC_USE_INVALIDATINGCOREANIMATION)
         find_library(FOUNDATION_FRAMEWORK Foundation)
         find_library(APPLICATIONSERVICES_FRAMEWORK ApplicationServices)
         set (PLUGIN_INTERNAL_DEPS
             ${FOUNDATION_FRAMEWORK}
             ${APPLICATIONSERVICES_FRAMEWORK}
             ${PLUGIN_INTERNAL_DEPS})
-    endif (FBMAC_USE_COREANIMATION OR FBMAC_USE_COREGRAPHICS)
+    endif (FBMAC_USE_COREANIMATION OR FBMAC_USE_COREGRAPHICS OR FBMAC_USE_INVALIDATINGCOREANIMATION)
    
-    if (FBMAC_USE_COREANIMATION)
+    if (FBMAC_USE_COREANIMATION OR FBMAC_USE_INVALIDATINGCOREANIMATION)
         find_library(QUARTZCORE_FRAMEWORK QuartzCore)
         set (PLUGIN_INTERNAL_DEPS
             ${QUARTZCORE_FRAMEWORK}
             ${PLUGIN_INTERNAL_DEPS})
-    endif (FBMAC_USE_COREANIMATION)
+    endif (FBMAC_USE_COREANIMATION OR FBMAC_USE_INVALIDATINGCOREANIMATION)
 endif (APPLE)
 

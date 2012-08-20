@@ -13,60 +13,102 @@ Copyright 2010 Georg Fritzsche, Firebreath development team
 \**********************************************************/
 
 #include "ConstructDefaultPluginWindows.h"
-#include "PluginEvents/AttachedEvent.h"
-#include "PluginEvents/DrawingEvents.h"
 
 #include "PluginWindowMacCA.h"
 
 using namespace FB;
 
-FB::PluginWindowMacCA* FB::createPluginWindowMacCA(bool invalidating)
+@interface MyCALayer : CALayer
 {
-    return new PluginWindowMacCA(invalidating);
 }
 
-PluginWindowMacCA::PluginWindowMacCA(bool invalidating)
-	: PluginWindowMac(), m_layer(NULL), m_invalidating(invalidating)
+@end
+
+@implementation MyCALayer
+
+- (void)dealloc {
+    FBLOG_DEBUG("PluginCore", "");
+    [super dealloc];
+}
+
+@end
+
+
+FB::PluginWindowMacCA* FB::createPluginWindowMacCA()
 {
+    return new PluginWindowMacCA();
+}
+
+PluginWindowMacCA::PluginWindowMacCA()
+    : PluginWindowMac(), m_layer(NULL), m_txtlayer(NULL)
+{
+    MyCALayer *mlayer = [[MyCALayer layer] retain];
+    mlayer.autoresizingMask = kCALayerWidthSizable | kCALayerHeightSizable;
+    mlayer.needsDisplayOnBoundsChange = YES;
+    m_layer = mlayer;
+
+    CATextLayer* txtlayer = [[CATextLayer layer] retain];
+    txtlayer.string = (DrawingModelCoreAnimation == getDrawingModel()) ? @"CoreAnimation" : @"InvalidatingCoreAnimation";
+    txtlayer.fontSize = 24;
+    txtlayer.foregroundColor = CGColorCreateGenericRGB(0.0, 1.0, 0.0, 1.0);
+    txtlayer.autoresizingMask = kCALayerWidthSizable | kCALayerHeightSizable;
+    txtlayer.needsDisplayOnBoundsChange = YES;
+    txtlayer.hidden = true;
+    [mlayer addSublayer:txtlayer];
+    m_txtlayer = txtlayer;
 }
 
 PluginWindowMacCA::~PluginWindowMacCA()
 {
-	[(CALayer*)m_layer autorelease];
-	m_layer = NULL;
+    CATextLayer *txtlayer = (CATextLayer*) m_txtlayer;
+    [txtlayer release];
+    m_txtlayer = NULL;
+
+    MyCALayer *mlayer = (MyCALayer*) m_layer;
+    [mlayer release];
+    m_layer = NULL;
+}
+
+// Whether the browser expects a non-retained Core Animation layer.
+static const unsigned WKNVExpectsNonretainedLayer = 74657;
+
+
+int16_t PluginWindowMacCA::GetValue(NPPVariable variable, void *value) {
+    MyCALayer *mlayer = (MyCALayer*) m_layer;
+    if (NPPVpluginCoreAnimationLayer == variable) {
+        NSBundle* mainb = [NSBundle mainBundle];
+        // Check the undocumented WKNVExpectsNonretainedLayer added to WebKit2 June 4.
+        // Use the supported response as definitive. Not supported as of Firefox 7.0.0.
+        NPBool expectsNonretainedLayer = false;
+        if (NPERR_NO_ERROR == m_npHost->GetValue((NPNVariable) WKNVExpectsNonretainedLayer, &expectsNonretainedLayer))
+            *(CALayer**) value = (expectsNonretainedLayer) ? mlayer : [mlayer retain];
+        // Need to only retain when Safari is run in 32bit mode and is the host process. Backwards compatiblity.
+        // When Safari is run in 64bit mode, the plugin is sandboxed in another process. According to curr spec.
+        // Also, allow the application to specify this behavior in their main bundle plist file, in case it's
+        // an application linking to WebKit in 32bit mode, but it's not called Safari
+        else if (NSOrderedSame == [[mainb bundleIdentifier] compare:@"com.apple.Safari"] ||
+            [mainb objectForInfoDictionaryKey:@"FirebreathCALayerRetain"])
+            *(CALayer**) value = [mlayer retain];
+        else
+            *(CALayer**) value = mlayer;
+        FBLOG_INFO("PluginCore", "GetValue(NPPVpluginCoreAnimationLayer)=" << (void*) mlayer);
+    }
+    return NPERR_NO_ERROR;
 }
 
 NPError PluginWindowMacCA::SetWindow(NPWindow* window)
 {
-	CALayer *layer = (CALayer*) window->window;
-//	FBLOG_TRACE("PluginCore", "PluginWindowMacCA::SetWindow() CALayer=%p", layer);
-	if (!layer)
-		return NPERR_INVALID_PARAM;
+    MyCALayer *mlayer = (MyCALayer*) m_layer;
+    CATextLayer* txtlayer = (CATextLayer*) m_txtlayer;
+    FBLOG_INFO("PluginCore", "CALayer=" << (void*) mlayer);
+    FBLOG_INFO("PluginCore", " bounds(" << window->x << "," << window->y << ")(" << window->x + window->width << "," << window->y + window->height << ")");
+    FBLOG_INFO("PluginCore", "   clip(" << window->clipRect.left << "," << window->clipRect.top << ")(" << window->clipRect.right << "," << window->clipRect.bottom << ")");
+    FBLOG_INFO("PluginCore", "  layer(" << mlayer.bounds.origin.x << "," << mlayer.bounds.origin.y << ")(" << mlayer.bounds.origin.x + mlayer.bounds.size.width << "," << mlayer.bounds.origin.y + mlayer.bounds.size.height << ")");
 
-	if (m_layer != layer)
-	{
-		[(CALayer*)layer retain];
-		[(CALayer*)m_layer autorelease];
-		m_layer = layer;
-		
-		m_x = window->x;
-		m_y = window->y;
-		m_width = window->width;
-		m_height = window->height;
-		m_clipTop = window->clipRect.top;
-		m_clipLeft = window->clipRect.left;
-		m_clipBottom = window->clipRect.bottom;
-		m_clipRight = window->clipRect.right;
-		
-		AttachedEvent evt2;
-		SendEvent(&evt2);
-		return NPERR_NO_ERROR;
-	}
-    return PluginWindowMac::SetWindow(window);
+    NPError rval = PluginWindowMac::SetWindow(window);
+    txtlayer.hidden = !m_drawLabel;
+    [txtlayer removeFromSuperlayer];
+    [mlayer addSublayer:txtlayer];
+    return rval;
 }
 
-void PluginWindowMacCA::InvalidateWindow() const
-{
-    // Force a drawInContext message to be passed to the window's CALayer
-    [(CALayer*)m_layer setNeedsDisplay];
-}

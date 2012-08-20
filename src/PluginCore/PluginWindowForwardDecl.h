@@ -39,11 +39,12 @@ namespace FB
 #endif
     
 #ifdef FB_MACOSX
+    class PluginWindowMacICA;
     class PluginWindowMacCA;
     class PluginWindowMacCG;
     class PluginWindowMacQD;
-	class PluginEventMacCocoa;
-	class PluginEventMacCarbon;
+    class PluginEventMacCocoa;
+    class PluginEventMacCarbon;
 #endif 
 }
 

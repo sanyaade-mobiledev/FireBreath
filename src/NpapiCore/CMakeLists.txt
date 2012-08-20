@@ -46,6 +46,11 @@ file (GLOB PLUGIN RELATIVE ${CMAKE_CURRENT_SOURCE_DIR}
     NpapiTypes.*
     NpapiFactory*
     )
+    
+file (GLOB PCH RELATIVE ${CMAKE_CURRENT_SOURCE_DIR}
+    precompiled_*
+    )
+    
 
 SOURCE_GROUP(NpapiScripting FILES ${SCRIPTING})
 
@@ -91,9 +96,11 @@ set (SOURCES
     ${WIN_SOURCES}
     ${MAC_SOURCES}
     ${X11_SOURCES}
+    ${PCH}
     )
 
 add_library(${PROJECT_NAME} STATIC ${SOURCES})
+ADD_PRECOMPILED_HEADER(${PROJECT_NAME} "${CMAKE_CURRENT_SOURCE_DIR}/precompiled_headers.h" "${CMAKE_CURRENT_SOURCE_DIR}/precompiled_headers.cpp" SOURCES)
 set_target_properties(${PROJECT_NAME} PROPERTIES FOLDER "FireBreath Core")
 
 if (UNIX)
@@ -106,8 +113,11 @@ target_link_libraries(${PROJECT_NAME}
     ${LIBDL_LIBRARIES}
     )
 
-if (NOT WITH_SYSTEM_BOOST)
-	export(TARGETS NpapiCore ${Boost_LIBRARIES} APPEND FILE ${FB_EXPORT_FILE})
-else()
-	export(TARGETS NpapiCore APPEND FILE ${FB_EXPORT_FILE})
+export(TARGETS NpapiCore APPEND FILE ${FB_EXPORT_FILE})
+if (FB_RELEASE)
+    install (TARGETS NpapiCore
+        EXPORT FireBreath_Exports
+        DESTINATION bin/\${BUILD_TYPE}
+        COMPONENT FBCORE
+        )
 endif()

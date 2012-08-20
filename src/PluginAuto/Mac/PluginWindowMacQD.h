@@ -30,17 +30,15 @@ namespace FB
         PluginWindowMacQD();
         virtual ~PluginWindowMacQD();
 
-		NPError SetWindow(NPWindow* window);
+        NPError SetWindow(NPWindow* window);
 
         DrawingModel getDrawingModel() const { return DrawingModelQuickDraw; }
-		void* getDrawingPrimitive() const { return m_port.port; }
-		WindowRef getWindowRef() const { return m_window; }
-
-        void InvalidateWindow() const;
+        void* getDrawingPrimitive() const { return m_port.port; }
+        WindowRef getWindowRef() const { return m_window; }
 
     protected:
         NP_Port m_port;
-		WindowRef m_window;
+        WindowRef m_window;
     };
 };
 

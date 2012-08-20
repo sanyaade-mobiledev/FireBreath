@@ -170,10 +170,14 @@ namespace FB
 
     /// @brief  Defines an alias representing a function pointer to JSAPI::Invoke
     typedef variant (JSAPI::*InvokeType)(const std::string&, const std::vector<variant>&);
+    /// @brief  Defines an alias representing a function pointer to JSAPI::Invoke
+    typedef variant (JSAPI::*ConstructType)(const std::vector<variant>&);
     /// @brief  Defines an alias representing a function pointer to JSAPI::SetProperty
     typedef void (JSAPI::*SetPropertyType)(const std::string&, const variant&);
     /// @brief  Defines an alias representing a function pointer to JSAPI::GetProperty
     typedef variant (JSAPI::*GetPropertyType)(const std::string&);
+    /// @brief  Defines an alias representing a function pointer to JSAPI::GetProperty
+    typedef void (JSAPI::*RemovePropertyType)(const std::string&);
 
     ////////////////////////////////////////////////////////////////////////////////////////////////////
     /// @struct CatchAll
@@ -286,10 +290,11 @@ namespace FB
         SecurityZone zone;
         MethodFunctors() : call() {}
         MethodFunctors(const CallMethodFunctor& call) : call(call) {}
-        MethodFunctors(const SecurityZone& zone, const CallMethodFunctor& call) : call(call) {}
+        MethodFunctors(const SecurityZone& zone, const CallMethodFunctor& call) : call(call), zone(zone) {}
         MethodFunctors(const MethodFunctors& m) : call(m.call) {}
         MethodFunctors& operator=(const MethodFunctors& rhs) {
             call = rhs.call;
+            zone = rhs.zone;
             return *this;
         }
     };
@@ -337,7 +342,7 @@ namespace FB
     }
 
     namespace boost_variant {
-        typedef boost::variant<long, int, double, std::string, FB::JSAPIPtr, FB::JSObjectPtr, FB::FBNull, FB::FBVoid> generic;
+        typedef boost::variant<long, int, double, std::string, FB::JSAPIPtr, FB::JSObjectPtr, FB::FBNull, FB::FBVoid> fb_compat;
         typedef boost::variant<long, int, double, float, std::string, FB::FBNull, FB::FBVoid> primitives;
         typedef boost::variant<std::string, FB::StringSet> strings;
     }

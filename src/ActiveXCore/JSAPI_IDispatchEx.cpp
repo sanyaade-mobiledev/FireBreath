@@ -1,7 +1,7 @@
 /**********************************************************\ 
 Original Author: Richard Bateman (taxilian)
 
-Created:    Oct 19, 2009
+Created:    Oct 30, 2009
 License:    Dual license model; choose one of two:
             New BSD License
             http://www.opensource.org/licenses/bsd-license.php
@@ -9,12 +9,10 @@ License:    Dual license model; choose one of two:
             GNU Lesser General Public License, version 2.1
             http://www.gnu.org/licenses/lgpl-2.1.html
 
-Copyright 2009 PacketPass, Inc and the Firebreath development team
+Copyright 2009 Richard Bateman, Firebreath development team
 \**********************************************************/
 
-#include "PluginWindow.h"
-#include "PluginEventSink.h"
+#include "JSAPI_IDispatchEx.h"
 
-using namespace FB;
-
+FB::variant FB::ActiveX::JSAPI_IDispatchExBase::IDisp_GetLastException::m_msg;
 

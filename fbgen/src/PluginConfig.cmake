@@ -33,8 +33,8 @@ set(MOZILLA_PLUGINID "@{COMPANY_domain}/@{PLUGIN_ident}")
 
 # strings
 set(FBSTRING_CompanyName "@{COMPANY_name}")
-set(FBSTRING_FileDescription "@{PLUGIN_desc}")
-set(FBSTRING_PLUGIN_VERSION "1.0.0")
+set(FBSTRING_PluginDescription "@{PLUGIN_desc}")
+set(FBSTRING_PLUGIN_VERSION "1.0.0.0")
 set(FBSTRING_LegalCopyright "Copyright @{YEAR} @{COMPANY_name}")
 set(FBSTRING_PluginFileName "np${PLUGIN_NAME}.dll")
 set(FBSTRING_ProductName "@{PLUGIN_name}")
@@ -53,6 +53,7 @@ set(FBMAC_USE_CARBON @{PLUGIN_disable_gui_mac})
 set(FBMAC_USE_COCOA @{PLUGIN_disable_gui_mac})
 set(FBMAC_USE_COREGRAPHICS @{PLUGIN_disable_gui_mac})
 set(FBMAC_USE_COREANIMATION 0)
+set(FBMAC_USE_INVALIDATINGCOREANIMATION 0)
 
 # If you want to register per-machine on Windows, uncomment this line
 #set (FB_ATLREG_MACHINEWIDE 1)

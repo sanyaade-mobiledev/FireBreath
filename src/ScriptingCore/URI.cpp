@@ -18,10 +18,11 @@ Copyright 2010 Dan Weatherford and Facebook, Inc
 #include <boost/lexical_cast.hpp>
 #include <boost/algorithm/string.hpp>
 #include <boost/algorithm/string/trim.hpp>
-#include <boost/asio.hpp>
 #include <boost/logic/tribool.hpp>
 #include <vector>
 #include <sstream>
+#include <boost/asio.hpp>
+#include "precompiled_headers.h" // On windows, everything above this line in PCH
 
 #include "URI.h"
 
@@ -37,9 +38,9 @@ std::string URI::url_encode(const std::string& in) {
     std::stringstream res;
     for (size_t i = 0; i < in.size(); ++i) {
         char c = in[i];
-        if (isalnum(c) ||
+        if (c > 0 && (isalnum(c) ||
             c == '$' || c == '-' || c == '_' || c == '.' || c == '!' ||
-            c == '*' || c == '\''|| c == '(' || c == ')' || c == ',' || c == '/') res << c;
+            c == '*' || c == '\''|| c == '(' || c == ')' || c == ',' || c == '/')) res << c;
         else {
             char buf[4];
             sprintf(buf, "%%%.2x", c & 0xff);

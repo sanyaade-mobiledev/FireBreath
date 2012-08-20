@@ -30,16 +30,24 @@ namespace FB { namespace Npapi {
         static bool isNPJavaScriptObject(const NPObject* const npo);
     
     protected:
+        NpapiBrowserHostPtr getHost() {
+            NpapiBrowserHostPtr ptr(m_browser.lock());
+            if (!ptr) {
+                Invalidate();
+                throw std::bad_cast();
+            }
+            return ptr;
+        }
         static NPClass NPJavascriptObjectClass;
         FB::JSAPIWeakPtr m_api;
-        NpapiBrowserHostPtr m_browser;
+        NpapiBrowserHostWeakPtr m_browser;
         bool m_valid;
         bool m_autoRelease;
         boost::shared_ptr<FB::ShareableReference< NPJavascriptObject > > m_sharedRef;
 
     public:
-        static NPJavascriptObject *NewObject(NpapiBrowserHostPtr host, FB::JSAPIWeakPtr api, bool auto_release = false);
-        void setAPI(FB::JSAPIWeakPtr api, NpapiBrowserHostPtr host);
+        static NPJavascriptObject *NewObject(const NpapiBrowserHostPtr& host, const FB::JSAPIWeakPtr& api, bool auto_release = false);
+        void setAPI(const FB::JSAPIWeakPtr& api, const NpapiBrowserHostPtr& host);
         FB::JSAPIPtr getAPI() const
         {
             FB::JSAPIPtr ptr(m_api.lock());
@@ -50,6 +58,10 @@ namespace FB { namespace Npapi {
         const boost::shared_ptr<FB::ShareableReference< NPJavascriptObject > > getWeakReference() { return m_sharedRef; }
 
         virtual ~NPJavascriptObject(void);
+
+        bool isValid() {
+            return m_valid && !m_api.expired() && !m_browser.expired();
+        }
 
     private:
         NPJavascriptObject(NPP npp);
@@ -68,7 +80,7 @@ namespace FB { namespace Npapi {
 
     public:
         // Static methods referenced in the NPClass
-        static NPObject *Allocate(NPP npp, NPClass *aClass);
+        static NPObject *_Allocate(NPP npp, NPClass *aClass);
         static void _Deallocate(NPObject *npobj);
         static void _Invalidate(NPObject *npobj);
         static bool _HasMethod(NPObject *npobj, NPIdentifier name);
@@ -84,10 +96,12 @@ namespace FB { namespace Npapi {
     public:
         FB_FORWARD_PTR(NPO_addEventListener);
         FB_FORWARD_PTR(NPO_removeEventListener);
+        FB_FORWARD_PTR(NPO_getLastException);
         friend class NPO_addEventListener;
         friend class NPO_removeEventListener;
         NPO_addEventListenerPtr m_addEventFunc;
         NPO_removeEventListenerPtr m_removeEventFunc;
+		NPO_getLastExceptionPtr m_getLastExceptionFunc;
 
         class NPO_addEventListener : public FB::JSFunction
         {
@@ -106,6 +120,17 @@ namespace FB { namespace Npapi {
             FB::variant exec(const std::vector<variant>& args);
         private:
             NPJavascriptObject* obj;
+        };
+        class NPO_getLastException : public FB::JSFunction
+        {
+        public:
+            NPO_getLastException(NPJavascriptObject* ptr)
+                : FB::JSFunction(FB::JSAPIPtr(), "getLastException", SecurityScope_Public), obj(ptr) { }
+			FB::variant exec(const FB::VariantList& args) { return m_msg; }
+			void setMessage(const FB::variant& msg) { m_msg = msg; }
+        private:
+            NPJavascriptObject* obj;
+			static FB::variant m_msg;
         };
     };
 

@@ -12,11 +12,13 @@ License:    Dual license model; choose one of two:
 Copyright 2009 Georg Fritzsche, Firebreath development team
 \**********************************************************/
 
-#include "JSArray.h"
 #include <iterator>
 #include "BrowserHost.h"
 #include "DOM/Window.h"
 #include "variant_list.h"
+#include "precompiled_headers.h" // On windows, everything above this line in PCH
+
+#include "JSArray.h"
 
 FB::JSArray::JSArray(const FB::JSObjectPtr& obj)
   : m_obj(obj)
@@ -28,7 +30,7 @@ FB::JSArray::JSArray(const FB::JSObjectPtr& obj)
 FB::JSArray::JSArray(BrowserHostPtr host, const FB::VariantList& values)
 {
     m_obj = host->getDOMWindow()->createArray();
-    for (FB::VariantList::const_iterator it = values.begin(); it != values.end(); it++)
+    for (FB::VariantList::const_iterator it = values.begin(); it != values.end(); ++it)
     {
         push(*it);
     }

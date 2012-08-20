@@ -83,9 +83,13 @@ file (GLOB MAC_SOURCES RELATIVE ${CMAKE_CURRENT_SOURCE_DIR}
     Mac/np_*.cpp
     )
 
+file (GLOB MAC_INVALIDATINGCOREANIMATION_SOURCES RELATIVE ${CMAKE_CURRENT_SOURCE_DIR}
+    Mac/*ICA.h
+    Mac/*ICA.mm
+    )
 file (GLOB MAC_COREANIMATION_SOURCES RELATIVE ${CMAKE_CURRENT_SOURCE_DIR}
-    Mac/*CA.h
-    Mac/*CA.mm
+    Mac/*MacCA.h
+    Mac/*MacCA.mm
     )
 file (GLOB MAC_COREGRAPHICS_SOURCES RELATIVE ${CMAKE_CURRENT_SOURCE_DIR}
     Mac/*CG.h
@@ -99,6 +103,7 @@ file (GLOB MAC_QUICKDRAW_SOURCES RELATIVE ${CMAKE_CURRENT_SOURCE_DIR}
 
 file (GLOB MAC_CARBON_SOURCES RELATIVE ${CMAKE_CURRENT_SOURCE_DIR}
     Mac/*Carbon.h
+    Mac/*Carbon.mm
     Mac/*Carbon.cpp
     )
 file (GLOB MAC_COCOA_SOURCES RELATIVE ${CMAKE_CURRENT_SOURCE_DIR}
@@ -107,6 +112,10 @@ file (GLOB MAC_COCOA_SOURCES RELATIVE ${CMAKE_CURRENT_SOURCE_DIR}
     Mac/*Cocoa.cpp
     )
 
+if(FBMAC_USE_INVALIDATINGCOREANIMATION)
+    set(MAC_SOURCES ${MAC_SOURCES} ${MAC_INVALIDATINGCOREANIMATION_SOURCES})
+    set(MAC_SOURCES ${MAC_SOURCES} ${MAC_COREANIMATION_SOURCES})
+endif()
 if(FBMAC_USE_COREANIMATION)
     set(MAC_SOURCES ${MAC_SOURCES} ${MAC_COREANIMATION_SOURCES})
 endif()
@@ -141,7 +150,7 @@ if (WIN32)
     set (GENERATED_IDL
         "${FB_TEMPLATE_DEST_DIR}/FireBreathWin.tlb"
         "${FB_TEMPLATE_DEST_DIR}/FireBreathWin_i.h"
-        "${FB_TEMPLATE_DEST_DIR}/FireBreathWin_i.c"
+        "${FB_TEMPLATE_DEST_DIR}/FireBreathWin_i.cpp"
         )
 
     SET (IDL_FILE ${FB_TEMPLATE_DEST_DIR}/FireBreathWin.idl)
@@ -150,7 +159,7 @@ if (WIN32)
         ${IDL_FILE}
         "${FB_TEMPLATE_DEST_DIR}/FireBreathWin.tlb"
         "${FB_TEMPLATE_DEST_DIR}/FireBreathWin_i.h"
-        "${FB_TEMPLATE_DEST_DIR}/FireBreathWin_p.c"
+        "${FB_TEMPLATE_DEST_DIR}/FireBreathWin_p.cpp"
         PROPERTIES
             HEADER_FILE_ONLY 1
             GENERATED 1
@@ -171,8 +180,8 @@ if (WIN32)
             /out "${FB_TEMPLATE_DEST_DIR}" 
             /tlb "FireBreathWin.tlb"
             /h "FireBreathWin_i.h"
-            /iid "FireBreathWin_i.c"
-            /proxy "FireBreathWin_p.c"
+            /iid "FireBreathWin_i.cpp"
+            /proxy "FireBreathWin_p.cpp"
         WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
         DEPENDS ${IDL_FILE}
         )
@@ -195,7 +204,10 @@ set (SOURCES
     ${GENERATED_IDL}
     ${MAC_SOURCES}
     ${X11_SOURCES})
+
+
 add_library(${PROJECT_NAME} STATIC ${SOURCES})
+ADD_PRECOMPILED_HEADER(${PROJECT_NAME} "${CMAKE_CURRENT_SOURCE_DIR}/precompiled_headers.h" "${CMAKE_CURRENT_SOURCE_DIR}/precompiled_headers.cpp" SOURCES)
 set_target_properties(${PROJECT_NAME} PROPERTIES FOLDER "FireBreath Generated")
 if (WIN32)
     # psapi is needed to get the process info and check if WiX is calling
